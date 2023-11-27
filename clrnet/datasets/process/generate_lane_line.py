@@ -6,7 +6,7 @@ from imgaug.augmentables.lines import LineString, LineStringsOnImage
 from imgaug.augmentables.segmaps import SegmentationMapsOnImage
 from scipy.interpolate import InterpolatedUnivariateSpline
 from clrnet.datasets.process.transforms import CLRTransforms
-
+import pdb
 from ..registry import PROCESS
 
 
@@ -14,16 +14,16 @@ from ..registry import PROCESS
 class GenerateLaneLine(object):
     def __init__(self, transforms=None, cfg=None, training=True):
         self.transforms = transforms
-        self.img_w, self.img_h = cfg.img_w, cfg.img_h
-        self.num_points = cfg.num_points
-        self.n_offsets = cfg.num_points
-        self.n_strips = cfg.num_points - 1
-        self.strip_size = self.img_h / self.n_strips
-        self.max_lanes = cfg.max_lanes
-        self.offsets_ys = np.arange(self.img_h, -1, -self.strip_size)
-        self.training = training
+        self.img_w, self.img_h = cfg.img_w, cfg.img_h # 800, 320
+        self.num_points = cfg.num_points # 72
+        self.n_offsets = cfg.num_points # 72
+        self.n_strips = cfg.num_points - 1 # 71
+        self.strip_size = self.img_h / self.n_strips # 4.507042253521127
+        self.max_lanes = cfg.max_lanes # 4
+        self.offsets_ys = np.arange(self.img_h, -1, -self.strip_size) # (320, 315, 310, ..., 0)
+        self.training = training # False
 
-        if transforms is None:
+        if transforms is None: # can be ignored during evluation stage
             transforms = CLRTransforms(self.img_h, self.img_w)
 
         if transforms is not None:
@@ -48,8 +48,14 @@ class GenerateLaneLine(object):
         else:
             img_transforms = []
         self.transform = iaa.Sequential(img_transforms)
+        # self.transform = 
+        # Sequential(
+        #     name=UnnamedSequential,
+        #     random_order=False,
+        #     children=[Sometimes(p=Deterministic(int 1), name=UnnamedSometimes, then_list=Sequential(name=UnnamedSometimes-then, random_order=False, children=[Resize(name=UnnamedResize, parameters=[(Deterministic(int 320), Deterministic(int 800)), Deterministic(cubic), HW], deterministic=False)], deterministic=False), else_list=None, deterministic=False)], deterministic=False)
 
     def lane_to_linestrings(self, lanes):
+        print("lane_to_linestrings")
         lines = []
         for lane in lanes:
             lines.append(LineString(lane))
@@ -57,6 +63,7 @@ class GenerateLaneLine(object):
         return lines
 
     def sample_lane(self, points, sample_ys):
+        print("sample_lane")
         # this function expects the points to be sorted
         points = np.array(points)
         if not np.all(points[1:, 1] < points[:-1, 1]):
@@ -93,6 +100,7 @@ class GenerateLaneLine(object):
         return xs_outside_image, xs_inside_image
 
     def filter_lane(self, lane):
+        print("filter_lane")
         assert lane[-1][1] <= lane[0][1]
         filtered_lane = []
         used = set()
@@ -104,6 +112,7 @@ class GenerateLaneLine(object):
         return filtered_lane
 
     def transform_annotation(self, anno, img_wh=None):
+        print("tranform_annotation")
         img_w, img_h = self.img_w, self.img_h
 
         old_lanes = anno['lanes']
@@ -169,6 +178,7 @@ class GenerateLaneLine(object):
         return new_anno
 
     def linestrings_to_lanes(self, lines):
+        print("linestrings_to_lanes")
         lanes = []
         for line in lines:
             lanes.append(line.coords)
@@ -176,7 +186,10 @@ class GenerateLaneLine(object):
         return lanes
 
     def __call__(self, sample):
+        print("__call__")
         img_org = sample['img']
+        # img_org.shape = (297, 1276, 3)
+        #pdb.set_trace()
         line_strings_org = self.lane_to_linestrings(sample['lanes'])
         line_strings_org = LineStringsOnImage(line_strings_org,
                                               shape=img_org.shape)
@@ -208,11 +221,32 @@ class GenerateLaneLine(object):
                         'Transform annotation failed 30 times :(')
                     exit()
 
-        sample['img'] = img.astype(np.float32) / 255.
+        print("input.shape:",img.shape)
+        #cv2.imwrite('dddcc.png', img)
+        #pdb.set_trace()
+        sample['img'] = img.astype(np.float32) / 255. # <------
         sample['lane_line'] = label
         sample['lanes_endpoints'] = lane_endpoints
         sample['gt_points'] = new_anno['lanes']
-        sample['seg'] = seg.get_arr() if self.training else np.zeros(
-            img_org.shape)
+        sample['seg'] = seg.get_arr() if self.training else np.zeros(img_org.shape) # img_org.shape= (297, 1296, 3)
+        
+        # sample.keys() = 
+        # dict_keys(['img', 'lanes', 'lane_line', 'lanes_endpoints', 'gt_points', 'seg'])
+
+        # sample['img'].shape = (320, 800, 3) np.float32
+        # sample['lanes'] = []
+        # sample['lane_line'].shape = (4, 78)
+        # sample['lane_line'][0] = [1, 0, -100000, ..., -100000]
+
+        # sample['lanes_endpoints']
+        # array([[1., 1.], [1., 1.], [1., 1.], [1., 1.]])
+
+        # sample['gt_points'] = []
+
+
+        # sample['seg'].shape = (297, 1276, 3)
+        # sample['seg'].sum() = 0
+
+
 
         return sample

@@ -17,7 +17,7 @@ from clrnet.models.utils.seg_decoder import SegDecoder
 from clrnet.models.utils.dynamic_assign import assign
 from clrnet.models.losses.lineiou_loss import liou_loss
 from ..registry import HEADS
-
+import pdb
 
 @HEADS.register_module
 class CLRHead(nn.Module):
@@ -280,21 +280,24 @@ class CLRHead(nn.Module):
         '''
         Convert predictions to internal Lane structure for evaluation.
         '''
+        #import pdb
         self.prior_ys = self.prior_ys.to(predictions.device)
         self.prior_ys = self.prior_ys.double()
+        
+        # len(self.prior_ys) = 72
         lanes = []
+        #pdb.set_trace()
         for lane in predictions:
             lane_xs = lane[6:]  # normalized value
-            start = min(max(0, int(round(lane[2].item() * self.n_strips))),
-                        self.n_strips)
+            start = min(max(0, int(round(lane[2].item() * self.n_strips))), self.n_strips)
             length = int(round(lane[5].item()))
             end = start + length - 1
             end = min(end, len(self.prior_ys) - 1)
+            
             # end = label_end
             # if the prediction does not start at the bottom of the image,
             # extend its prediction until the x is outside the image
-            mask = ~((((lane_xs[:start] >= 0.) & (lane_xs[:start] <= 1.)
-                       ).cpu().numpy()[::-1].cumprod()[::-1]).astype(np.bool))
+            mask = ~((((lane_xs[:start] >= 0.) & (lane_xs[:start] <= 1.)).cpu().numpy()[::-1].cumprod()[::-1]).astype(np.bool))
             lane_xs[end + 1:] = -2
             lane_xs[:start][mask] = -2
             lane_ys = self.prior_ys[lane_xs >= 0]
@@ -302,8 +305,8 @@ class CLRHead(nn.Module):
             lane_xs = lane_xs.flip(0).double()
             lane_ys = lane_ys.flip(0)
 
-            lane_ys = (lane_ys * (self.cfg.ori_img_h - self.cfg.cut_height) +
-                       self.cfg.cut_height) / self.cfg.ori_img_h
+            lane_ys = (lane_ys * (self.cfg.ori_img_h - self.cfg.cut_height) + self.cfg.cut_height) / self.cfg.ori_img_h
+            #pdb.set_trace()
             if len(lane_xs) <= 1:
                 continue
             points = torch.stack(
@@ -316,6 +319,7 @@ class CLRHead(nn.Module):
                             'conf': lane[1]
                         })
             lanes.append(lane)
+        #pdb.set_trace()
         return lanes
 
     def loss(self,
@@ -441,9 +445,11 @@ class CLRHead(nn.Module):
         '''
         Convert model output to lanes.
         '''
+        #pdb.set_trace()
         softmax = nn.Softmax(dim=1)
 
         decoded = []
+        print("------------------------------------------------")
         for predictions in output:
             # filter out the conf lower than conf threshold
             threshold = self.cfg.test_parameters.conf_threshold
@@ -480,5 +486,5 @@ class CLRHead(nn.Module):
             else:
                 pred = predictions
             decoded.append(pred)
-
+        #pdb.set_trace()
         return decoded
